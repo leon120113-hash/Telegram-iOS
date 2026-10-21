@@ -1,0 +1,134 @@
+name: Build IPA
+
+# Builds an unsigned (fake-signed) Telegram.ipa with your own api_id / api_hash
+# and publishes it as a GitHub Release. Re-sign it on the device (KSign etc.).
+#
+# Needs two repository secrets: TELEGRAM_API_ID and TELEGRAM_API_HASH
+# (Settings -> Secrets and variables -> Actions).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Check secrets
+        env:
+          API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          if [ -z "$API_ID" ] || [ -z "$API_HASH" ]; then
+            echo "::error::Add TELEGRAM_API_ID and TELEGRAM_API_HASH in Settings -> Secrets and variables -> Actions"
+            exit 1
+          fi
+
+      - name: Select Xcode
+        run: |
+          WANTED=$(python3 -c 'import json;print(json.load(open("versions.json"))["xcode"])')
+          echo "versions.json wants Xcode $WANTED"
+          ls -d /Applications/Xcode*.app || true
+          if [ -d "/Applications/Xcode_$WANTED.app" ]; then
+            sudo xcode-select -s "/Applications/Xcode_$WANTED.app/Contents/Developer"
+          else
+            # the closest one installed: the newest Xcode with the same major version, else the newest of all
+            MAJOR=${WANTED%%.*}
+            PICK=$(ls -d /Applications/Xcode_${MAJOR}*.app 2>/dev/null | sort -V | tail -1)
+            [ -z "$PICK" ] && PICK=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+            echo "Xcode $WANTED is not installed, using $PICK"
+            sudo xcode-select -s "$PICK/Contents/Developer"
+            echo "XCODE_OVERRIDE=--overrideXcodeVersion" >> $GITHUB_ENV
+          fi
+          xcodebuild -version
+
+      - name: Free disk space
+        run: |
+          df -h /
+          # a device build needs one Xcode and no simulators
+          ACTIVE=$(cd "$(xcode-select -p)/../.." && pwd -P)
+          for app in /Applications/Xcode*.app; do
+            [ -L "$app" ] && continue
+            [ "$(cd "$app" && pwd -P)" = "$ACTIVE" ] && continue
+            sudo rm -rf "$app" &
+          done
+          wait
+          xcrun simctl delete all || true
+          sudo rm -rf ~/Library/Developer/CoreSimulator/Caches || true
+          df -h /
+
+      - name: Write build configuration
+        env:
+          API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          # the fake signing profiles are made for the App Store bundle id, so it stays;
+          # KSign gives the app its own bundle id when it re-signs
+          python3 - <<'EOF'
+          import json, os
+          config = json.load(open('build-system/appstore-configuration.json'))
+          config.update({
+              'api_id': os.environ['API_ID'].strip(),
+              'api_hash': os.environ['API_HASH'].strip(),
+              'is_internal_build': 'false',
+              'is_appstore_build': 'false',
+              'appstore_id': '0',
+              'premium_iap_product_id': '',
+              'enable_siri': False,
+              'enable_icloud': False
+          })
+          json.dump(config, open('/tmp/tgmod-configuration.json', 'w'), indent=2)
+          EOF
+
+      - name: Create canonical source directory
+        run: |
+          sudo mkdir -p /Users/Shared
+          sudo chown "$(whoami)" /Users/Shared
+          cp -R "$GITHUB_WORKSPACE" /Users/Shared/telegram-ios
+
+      - name: Build
+        run: |
+          set -x
+          cd /Users/Shared/telegram-ios
+          export APP_VERSION=$(python3 -c 'import json;print(json.load(open("versions.json"))["app"])')
+          export BUILD_NUMBER=$(( $(cat build_number_offset) + 100000 + ${{ github.run_number }} ))
+          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $GITHUB_ENV
+
+          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+          python3 -u build-system/Make/Make.py \
+            --bazelUserRoot="/private/var/tmp/_bazel_tgmod" \
+            $XCODE_OVERRIDE \
+            build \
+            --configurationPath=/tmp/tgmod-configuration.json \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --configuration=release_arm64 \
+            --buildNumber="$BUILD_NUMBER"
+
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          for f in bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/Telegram.ipa; do
+            cp "$f" "$GITHUB_WORKSPACE/out/Telegram.ipa"
+          done
+          ls -la "$GITHUB_WORKSPACE/out"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="build-${BUILD_NUMBER}"
+          gh release create "$TAG" out/Telegram.ipa \
+            --title "Telegram ${APP_VERSION} (${BUILD_NUMBER})" \
+            --notes "Unsigned build. Re-sign it with KSign and give it its own bundle id."
+
+      - name: Disk usage on failure
+        if: failure()
+        run: df -h /
