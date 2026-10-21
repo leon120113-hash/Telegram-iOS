@@ -21,12 +21,12 @@ permissions:
 
 jobs:
   build:
-    # macOS runners run short at times: both images try, whichever gets a machine builds.
-    # macos-26 has the exact Xcode from versions.json, macos-15 the newest 26.x it carries.
+    # macOS runners run short at times: both pools try, whichever gets a machine builds.
+    # Both carry the exact Xcode from versions.json (macos-15's 26.3 cannot build dav1d).
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-26, macos-15]
+        runner: [macos-26, macos-26-intel]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
 
