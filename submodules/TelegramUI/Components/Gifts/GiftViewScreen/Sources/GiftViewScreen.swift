@@ -3837,6 +3837,12 @@ private final class GiftViewSheetContent: CombinedComponent {
                         hasDescriptionButton = true
                         releasedByPeer = peer
                     }
+                    // * a gift of the Vanity mod says so where its name is
+                    if VanityMod.isVanitySlug(uniqueGift.slug) {
+                        descriptionText = "\(VanityMod.mark) · только на этом телефоне"
+                        hasDescriptionButton = false
+                        releasedByPeer = nil
+                    }
                     if hasGiftMessage && !giftMessageNameHidden {
                         let senderName = giftMessagePeer?.displayTitle(strings: strings, displayOrder: nameDisplayOrder) ?? ""
                         descriptionText = "\(strings.Gift_View_From.lowercased()) **\(senderName)**"

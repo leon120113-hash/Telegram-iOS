@@ -302,7 +302,13 @@ public class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
                         starsCount = attribute.stars.value
                     }
                 }
-                
+                // * the Vanity mod's views for your channel, marked MOD beside the time
+                var isVanityViews = false
+                if viewCount != nil, let vanityViews = VanityMod.shared.views(peerId: item.message.id.peerId, messageId: item.message.id.id) {
+                    viewCount = Int(vanityViews)
+                    isVanityViews = true
+                }
+
                 let dateFormat: MessageTimestampStatusFormat
                 if item.presentationData.isPreview {
                     dateFormat = .full
@@ -311,7 +317,10 @@ public class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
                 } else {
                     dateFormat = .regular
                 }
-                let dateText = stringForMessageTimestampStatus(context: item.context, message: EngineMessage(item.message), dateTimeFormat: item.presentationData.dateTimeFormat, nameDisplayOrder: item.presentationData.nameDisplayOrder, strings: item.presentationData.strings, format: dateFormat, associatedData: item.associatedData)
+                var dateText = stringForMessageTimestampStatus(context: item.context, message: EngineMessage(item.message), dateTimeFormat: item.presentationData.dateTimeFormat, nameDisplayOrder: item.presentationData.nameDisplayOrder, strings: item.presentationData.strings, format: dateFormat, associatedData: item.associatedData)
+                if isVanityViews {
+                    dateText += " · \(VanityMod.mark)"
+                }
                 
                 let statusType: ChatMessageDateAndStatusType?
                 var displayStatus = false

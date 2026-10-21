@@ -3066,22 +3066,33 @@ public final class ProfileGiftsContext {
     private let impl: QueueLocalObject<ProfileGiftsContextImpl>
     
     public var state: Signal<ProfileGiftsContext.State, NoError> {
-        return Signal { subscriber in
+        let state: Signal<ProfileGiftsContext.State, NoError> = Signal { subscriber in
             let disposable = MetaDisposable()
-            
+
             self.impl.with { impl in
                 disposable.set(impl.state.start(next: { value in
                     subscriber.putNext(value)
                 }))
             }
-            
+
             return disposable
         }
+        // * your own profile also shows the Vanity mod's gifts
+        guard self.peerId == self.accountPeerId, self.collectionId == nil else {
+            return state
+        }
+        let peerId = self.peerId
+        let accountPeerId = self.accountPeerId
+        return combineLatest(state, VanityMod.shared.settingsSignal)
+        |> map { state, _ -> ProfileGiftsContext.State in
+            return state.withVanityGifts(VanityMod.shared.gifts(peerId: peerId, accountPeerId: accountPeerId))
+        }
     }
-    
+
     public let peerId: EnginePeer.Id
     public let collectionId: Int32?
-    
+    private let accountPeerId: EnginePeer.Id
+
     public init(
         account: Account,
         peerId: EnginePeer.Id,
@@ -3092,7 +3103,8 @@ public final class ProfileGiftsContext {
     ) {
         self.peerId = peerId
         self.collectionId = collectionId
-        
+        self.accountPeerId = account.peerId
+
         let queue = self.queue
         self.impl = QueueLocalObject(queue: queue, generate: {
             return ProfileGiftsContextImpl(queue: queue, account: account, peerId: peerId, collectionId: collectionId, sorting: sorting, filter: filter, limit: limit)

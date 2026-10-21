@@ -521,6 +521,12 @@ final class GiftsListView: UIView {
                             }
                         }
                     }
+                    // * a gift of the Vanity mod wears MOD on its ribbon
+                    if VanityMod.isVanitySlug(gift.slug) {
+                        ribbonText = VanityMod.mark
+                        ribbonFont = .larger
+                        ribbonColor = .red
+                    }
                 }
                 
                 let itemReferenceId = product.reference?.stringValue ?? ""

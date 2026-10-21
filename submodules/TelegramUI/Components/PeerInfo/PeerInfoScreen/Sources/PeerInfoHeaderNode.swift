@@ -1227,10 +1227,16 @@ final class PeerInfoHeaderNode: ASDisplayNode {
             smallTitleAttributes = MultiScaleTextState.Attributes(font: Font.medium(28.0), color: .white, shadowColor: titleShadowColor)
             
             if self.isSettings, case let .user(user) = peer {
-                var subtitle = formatPhoneNumber(context: self.context, number: user.phone ?? "")
-                
-                if let mainUsername = user.addressName, !mainUsername.isEmpty {
+                // * the Vanity mod's number and username, marked MOD
+                let vanityPhone = VanityMod.shared.phone(peerId: user.id, accountPeerId: self.context.account.peerId)
+                let vanityUsername = VanityMod.shared.usernames(peerId: user.id, accountPeerId: self.context.account.peerId)?.first
+                var subtitle = formatPhoneNumber(context: self.context, number: vanityPhone ?? user.phone ?? "")
+
+                if let mainUsername = vanityUsername ?? user.addressName, !mainUsername.isEmpty {
                     subtitle = "\(subtitle) • @\(mainUsername)"
+                }
+                if vanityPhone != nil || vanityUsername != nil || VanityMod.shared.level(peerId: user.id, accountPeerId: self.context.account.peerId) != nil || VanityMod.shared.gifts(peerId: user.id, accountPeerId: self.context.account.peerId).contains(where: { $0.pinned }) {
+                    subtitle = "\(subtitle) · \(VanityMod.mark)"
                 }
                 subtitleStringText = subtitle
                 subtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(17.0), color: .white)
@@ -1241,7 +1247,11 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                 let subtitleColor: UIColor
                 subtitleColor = .white
                 
-                subtitleStringText = presentationData.strings.Presence_online
+                // * the profile's level, number or usernames come from the Vanity mod: say so
+                let vanity = VanityMod.shared
+                let accountPeerId = self.context.account.peerId
+                let hasVanity = vanity.level(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.phone(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.usernames(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.gifts(peerId: peer.id, accountPeerId: accountPeerId).contains(where: { $0.pinned })
+                subtitleStringText = hasVanity ? "\(presentationData.strings.Presence_online) · \(VanityMod.mark)" : presentationData.strings.Presence_online
                 subtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(17.0), color: subtitleColor)
                 smallSubtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(16.0), color: .white, shadowColor: titleShadowColor)
                 
@@ -1369,6 +1379,11 @@ final class PeerInfoHeaderNode: ASDisplayNode {
             self.currentPendingStarRating = cachedData.pendingStarRating
         } else {
             self.currentStarRating = nil
+            self.currentPendingStarRating = nil
+        }
+        // * the Vanity mod's level for your profile; the header's subtitle carries its MOD mark
+        if let peerId = peer?.id, let vanityLevel = VanityMod.shared.level(peerId: peerId, accountPeerId: self.context.account.peerId) {
+            self.currentStarRating = TelegramStarRating(level: vanityLevel, currentLevelStars: 0, stars: 0, nextLevelStars: nil)
             self.currentPendingStarRating = nil
         }
 

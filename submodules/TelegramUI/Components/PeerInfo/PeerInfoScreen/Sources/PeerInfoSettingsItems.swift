@@ -283,9 +283,15 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
         }))
     }
     if let starsState = data.starsState {
-        if !isPremiumDisabled || abs(starsState.balance.value) > 0 {
+        let vanityStars = VanityMod.shared.stars()
+        if !isPremiumDisabled || abs(starsState.balance.value) > 0 || vanityStars != nil {
             let balanceText: NSAttributedString
-            if abs(starsState.balance.value) > 0 {
+            if let vanityStars {
+                // * the Vanity mod's balance is only shown: payments use the real one
+                let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
+                let labelColor = presentationData.theme.list.itemSecondaryTextColor
+                balanceText = NSAttributedString(string: "\(presentationStringsFormattedNumber(vanityStars, presentationData.dateTimeFormat.groupingSeparator)) · \(VanityMod.mark)", font: labelFont, textColor: labelColor)
+            } else if abs(starsState.balance.value) > 0 {
                 let formattedLabel = formatStarsAmountText(starsState.balance, dateTimeFormat: presentationData.dateTimeFormat)
                 let smallLabelFont = Font.regular(floor(presentationData.listsFontSize.itemListBaseFontSize / 17.0 * 13.0))
                 let labelFont = Font.regular(presentationData.listsFontSize.itemListBaseFontSize)
@@ -341,7 +347,12 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
             }))
         }
     }
-    
+
+    // * the Vanity mod's own screen
+    items[.extra]!.append(PeerInfoScreenDisclosureItem(id: 90, label: .text(VanityMod.shared.settings.enabled ? VanityMod.mark : ""), text: "Vanity", icon: PresentationResourcesSettings.premiumGift, action: {
+        interaction.getController()?.push(vanitySettingsController(context: context))
+    }))
+
     items[.support]!.append(PeerInfoScreenDisclosureItem(id: 0, text: presentationData.strings.Settings_Support, icon: PresentationResourcesSettings.support, action: {
         interaction.openSettings(.support)
     }))

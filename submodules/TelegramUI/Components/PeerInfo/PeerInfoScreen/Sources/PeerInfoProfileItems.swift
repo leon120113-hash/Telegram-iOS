@@ -173,13 +173,20 @@ func infoItems(
             ))
         }
         
-        if let phone = user.phone {
+        // * the Vanity mod shows its own number and usernames on your profile, marked MOD
+        let vanityPhone = VanityMod.shared.phone(peerId: user.id, accountPeerId: context.account.peerId)
+        let vanityUsernames = VanityMod.shared.usernames(peerId: user.id, accountPeerId: context.account.peerId)
+
+        if let phone = vanityPhone ?? user.phone {
             let formattedPhone = formatPhoneNumber(context: context, number: phone)
-            let label: String
+            var label: String
             if formattedPhone.hasPrefix("+888 ") {
                 label = presentationData.strings.UserInfo_AnonymousNumberLabel
             } else {
                 label = presentationData.strings.ContactInfo_PhoneLabelMobile
+            }
+            if vanityPhone != nil {
+                label += " · \(VanityMod.mark)"
             }
             items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemPhoneNumber, label: label, text: formattedPhone, textColor: .accent, action: { node, progress in
                 interaction.openPhone(phone, node, nil, progress)
@@ -189,17 +196,22 @@ func infoItems(
                 interaction.requestLayout(animated)
             }))
         }
-        if let mainUsername = user.addressName {
+        if let mainUsername = vanityUsernames?.first ?? user.addressName {
             var additionalUsernames: String?
-            let usernames = user.usernames.filter { $0.isActive && $0.username != mainUsername }
-            if !usernames.isEmpty {
-                additionalUsernames = presentationData.strings.Profile_AdditionalUsernames(String(usernames.map { "@\($0.username)" }.joined(separator: ", "))).string
+            let otherUsernames: [String]
+            if let vanityUsernames {
+                otherUsernames = Array(vanityUsernames.dropFirst())
+            } else {
+                otherUsernames = user.usernames.filter { $0.isActive && $0.username != mainUsername }.map(\.username)
             }
-            
+            if !otherUsernames.isEmpty {
+                additionalUsernames = presentationData.strings.Profile_AdditionalUsernames(String(otherUsernames.map { "@\($0)" }.joined(separator: ", "))).string
+            }
+
             items[currentPeerInfoSection]!.append(
                 PeerInfoScreenLabeledValueItem(
                     id: ItemUsername,
-                    label: presentationData.strings.Profile_Username,
+                    label: vanityUsernames != nil ? "\(presentationData.strings.Profile_Username) · \(VanityMod.mark)" : presentationData.strings.Profile_Username,
                     text: "@\(mainUsername)",
                     additionalText: additionalUsernames,
                     textColor: .accent,

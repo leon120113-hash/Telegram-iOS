@@ -9,11 +9,11 @@ name: Build IPA
 on:
   workflow_dispatch:
   push:
-    branches: [master]
+    branches: [master, mod]
 
-# a newer push replaces a build that is still running
+# a newer push to the same branch replaces a build of it that is still running
 concurrency:
-  group: build-ipa
+  group: build-ipa-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -149,9 +149,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="build-${BUILD_NUMBER}-${{ matrix.runner }}"
+          TAG="build-${BUILD_NUMBER}-${{ github.ref_name }}-${{ matrix.runner }}"
           gh release create "$TAG" out/Telegram.ipa \
-            --title "Telegram ${APP_VERSION} (${BUILD_NUMBER}, ${{ matrix.runner }})" \
+            --target "$GITHUB_SHA" \
+            --title "Telegram ${APP_VERSION} (${BUILD_NUMBER}, ${{ github.ref_name }}, ${{ matrix.runner }})" \
             --notes "Unsigned build. Re-sign it with KSign and give it its own bundle id."
 
       # logs need a signed-in viewer; annotations and the summary do not

@@ -807,6 +807,9 @@ public final class ChatTitleComponent: Component {
                                             let membersString: String
                                             if case .group = channel.info {
                                                 membersString = component.strings.Conversation_StatusMembers(memberCount)
+                                            } else if let vanitySubscribers = VanityMod.shared.subscribers(peerId: channel.id) {
+                                                // * the Vanity mod's subscriber count for your channel, marked MOD
+                                                membersString = "\(component.strings.Conversation_StatusSubscribers(vanitySubscribers)) · \(VanityMod.mark)"
                                             } else {
                                                 membersString = component.strings.Conversation_StatusSubscribers(memberCount)
                                             }

@@ -1767,7 +1767,10 @@ func peerInfoScreenData(
                 guard let _ = peerView.peers[peerId] as? TelegramChannel else {
                     return PeerInfoStatusData(text: strings.Channel_Status, isActivity: false, key: nil)
                 }
-                if let cachedChannelData = peerView.cachedData as? CachedChannelData, let memberCount = cachedChannelData.participantsSummary.memberCount, memberCount != 0 {
+                if let vanitySubscribers = VanityMod.shared.subscribers(peerId: peerId) {
+                    // * the Vanity mod's subscriber count for your channel, marked MOD
+                    return PeerInfoStatusData(text: "\(strings.Conversation_StatusSubscribers(vanitySubscribers)) · \(VanityMod.mark)", isActivity: false, key: nil)
+                } else if let cachedChannelData = peerView.cachedData as? CachedChannelData, let memberCount = cachedChannelData.participantsSummary.memberCount, memberCount != 0 {
                     return PeerInfoStatusData(text: strings.Conversation_StatusSubscribers(memberCount), isActivity: false, key: nil)
                 } else {
                     return PeerInfoStatusData(text: strings.Channel_Status, isActivity: false, key: nil)
