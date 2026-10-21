@@ -128,6 +128,16 @@ jobs:
           versions['bazel'] = sys.argv[1] + ':' + sys.argv[2]
           json.dump(versions, open('versions.json', 'w'), indent=4)
           EOF
+            # the WebAssembly toolchain for the calls core is pinned to its arm64 build as well
+            python3 - <<'EOF'
+          import re
+          text = open('MODULE.bazel').read()
+          start = text.index('name = "wasi_sdk_macos"')
+          end = text.index(')', start)
+          block = text[start:end].replace('arm64-macos', 'x86_64-macos')
+          block = re.sub(r'\n\s*sha256 = "[0-9a-f]+",', '', block)
+          open('MODULE.bazel', 'w').write(text[:start] + block + text[end:])
+          EOF
           fi
 
           python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
