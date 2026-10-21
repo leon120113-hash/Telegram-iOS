@@ -21,7 +21,13 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-26
+    # macOS runners run short at times: both images try, whichever gets a machine builds.
+    # macos-26 has the exact Xcode from versions.json, macos-15 the newest 26.x it carries.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-26, macos-15]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
 
     steps:
@@ -131,9 +137,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="build-${BUILD_NUMBER}"
+          TAG="build-${BUILD_NUMBER}-${{ matrix.runner }}"
           gh release create "$TAG" out/Telegram.ipa \
-            --title "Telegram ${APP_VERSION} (${BUILD_NUMBER})" \
+            --title "Telegram ${APP_VERSION} (${BUILD_NUMBER}, ${{ matrix.runner }})" \
             --notes "Unsigned build. Re-sign it with KSign and give it its own bundle id."
 
       # logs need a signed-in viewer; annotations and the summary do not
