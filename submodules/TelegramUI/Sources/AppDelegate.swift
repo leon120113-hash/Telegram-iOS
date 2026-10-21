@@ -562,8 +562,17 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         try! PasscodeEnvironment.shared.configure(PasscodeConfiguration(appGroupIdentifier: appGroupName, processRole: .mainApp, biometricKeychainService: walletBiometricKeychainService), privateAccessGroup: {
             BuildConfig.keychainAccessGroup(baseAppBundleId: baseAppBundleId)
         })
-        let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
-        
+        var maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
+        if maybeAppGroupUrl == nil {
+            // A re-signed build (KSign and the like) often comes without the app group entitlement.
+            // The app then keeps its data in its own container; the extensions cannot share it.
+            if let applicationSupport = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
+                let fallbackUrl = applicationSupport.appendingPathComponent("app-group", isDirectory: true)
+                try? FileManager.default.createDirectory(at: fallbackUrl, withIntermediateDirectories: true, attributes: nil)
+                maybeAppGroupUrl = fallbackUrl
+            }
+        }
+
         let buildConfig = BuildConfig(baseAppBundleId: baseAppBundleId)
         self.buildConfig = buildConfig
         let signatureDict = BuildConfigExtra.signatureDict()
