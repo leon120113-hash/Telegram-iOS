@@ -122,10 +122,9 @@ jobs:
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
+          # bazel-bin is a symlink into the output base; -L copies the file itself
           mkdir -p "$GITHUB_WORKSPACE/out"
-          for f in bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/Telegram.ipa; do
-            cp "$f" "$GITHUB_WORKSPACE/out/Telegram.ipa"
-          done
+          cp -L bazel-bin/Telegram/Telegram.ipa "$GITHUB_WORKSPACE/out/Telegram.ipa"
           ls -la "$GITHUB_WORKSPACE/out"
 
       - name: Publish release
