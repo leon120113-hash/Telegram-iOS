@@ -63,6 +63,8 @@ jobs:
             echo "XCODE_OVERRIDE=--overrideXcodeVersion" >> $GITHUB_ENV
           fi
           xcodebuild -version
+          # Xcode 26 ships the Metal compiler as a separate component, missing on some images
+          xcrun -f metal >/dev/null 2>&1 || xcodebuild -downloadComponent MetalToolchain
 
       - name: Free disk space
         run: |
