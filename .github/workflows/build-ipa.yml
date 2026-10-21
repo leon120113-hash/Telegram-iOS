@@ -104,7 +104,8 @@ jobs:
 
       - name: Build
         run: |
-          set -x
+          set -x -o pipefail
+          exec > >(tee /tmp/build.log) 2>&1
           cd /Users/Shared/telegram-ios
           export APP_VERSION=$(python3 -c 'import json;print(json.load(open("versions.json"))["app"])')
           export BUILD_NUMBER=$(( $(cat build_number_offset) + 100000 + ${{ github.run_number }} ))
@@ -136,6 +137,21 @@ jobs:
             --title "Telegram ${APP_VERSION} (${BUILD_NUMBER})" \
             --notes "Unsigned build. Re-sign it with KSign and give it its own bundle id."
 
-      - name: Disk usage on failure
+      # logs need a signed-in viewer; annotations and the summary do not
+      - name: Report errors
         if: failure()
-        run: df -h /
+        run: |
+          df -h /
+          FREE=$(df -h / | awk 'NR==2 {print $4}')
+          echo "::notice::Free disk space at the end: $FREE"
+          if [ -f /tmp/build.log ]; then
+            grep -E "error:|ERROR:|No space left|Killed|fatal:" /tmp/build.log | grep -v "^+ " | head -n 9 | while IFS= read -r line; do
+              echo "::error::$(echo "$line" | cut -c1-900)"
+            done
+            {
+              echo '### Last lines of the build log'
+              echo '```'
+              tail -n 80 /tmp/build.log | cut -c1-300
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
