@@ -8,6 +8,13 @@ name: Build IPA
 
 on:
   workflow_dispatch:
+  push:
+    branches: [master]
+
+# a newer push replaces a build that is still running
+concurrency:
+  group: build-ipa
+  cancel-in-progress: true
 
 permissions:
   contents: write
