@@ -1578,7 +1578,9 @@ func peerInfoScreenData(
                 if isMyProfile {
                     availablePanes?.insert(.stories, at: 0)
                     if availablePanes != nil, profileGiftsContext != nil, let cachedData = peerView.cachedData as? CachedUserData {
-                        if let starGiftsCount = cachedData.starGiftsCount, starGiftsCount > 0 {
+                        // * the Vanity mod's gifts count too, or a profile without real ones never shows them
+                        let hasVanityGifts = !VanityMod.shared.gifts(peerId: peerId, accountPeerId: context.account.peerId).isEmpty
+                        if (cachedData.starGiftsCount ?? 0) > 0 || hasVanityGifts {
                             availablePanes?.insert(.gifts, at: 1)
                         }
                     }
