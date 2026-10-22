@@ -15,6 +15,7 @@ import GiftViewScreen
 private final class VanitySettingsArguments {
     let context: AccountContext
     let toggleEnabled: (Bool) -> Void
+    let togglePremium: (Bool) -> Void
     let updatePhone: (String) -> Void
     let updateUsernames: (String) -> Void
     let updateLevel: (String) -> Void
@@ -28,9 +29,10 @@ private final class VanitySettingsArguments {
     let removeChannel: (Int64) -> Void
     let addChannel: () -> Void
 
-    init(context: AccountContext, toggleEnabled: @escaping (Bool) -> Void, updatePhone: @escaping (String) -> Void, updateUsernames: @escaping (String) -> Void, updateLevel: @escaping (String) -> Void, updateStars: @escaping (String) -> Void, updateSlug: @escaping (String) -> Void, addBySlug: @escaping () -> Void, openBuilder: @escaping () -> Void, openGift: @escaping (String) -> Void, updateChannelSubscribers: @escaping (Int64, String) -> Void, updateChannelViews: @escaping (Int64, String) -> Void, removeChannel: @escaping (Int64) -> Void, addChannel: @escaping () -> Void) {
+    init(context: AccountContext, toggleEnabled: @escaping (Bool) -> Void, togglePremium: @escaping (Bool) -> Void, updatePhone: @escaping (String) -> Void, updateUsernames: @escaping (String) -> Void, updateLevel: @escaping (String) -> Void, updateStars: @escaping (String) -> Void, updateSlug: @escaping (String) -> Void, addBySlug: @escaping () -> Void, openBuilder: @escaping () -> Void, openGift: @escaping (String) -> Void, updateChannelSubscribers: @escaping (Int64, String) -> Void, updateChannelViews: @escaping (Int64, String) -> Void, removeChannel: @escaping (Int64) -> Void, addChannel: @escaping () -> Void) {
         self.context = context
         self.toggleEnabled = toggleEnabled
+        self.togglePremium = togglePremium
         self.updatePhone = updatePhone
         self.updateUsernames = updateUsernames
         self.updateLevel = updateLevel
@@ -57,6 +59,7 @@ private enum VanitySettingsEntry: ItemListNodeEntry, Equatable {
     case enabled(Bool)
     case enabledInfo
     case profileHeader
+    case premium(Bool)
     case phone(String)
     case usernames(String)
     case level(String)
@@ -66,7 +69,7 @@ private enum VanitySettingsEntry: ItemListNodeEntry, Equatable {
     case slug(String)
     case addBySlug(Bool)
     case builder
-    case gift(Int32, String, String, String)
+    case gift(Int32, String, StarGift.UniqueGift, Bool)
     case giftsInfo
     case channelsHeader
     case channelTitle(Int32, Int64, String)
@@ -80,7 +83,7 @@ private enum VanitySettingsEntry: ItemListNodeEntry, Equatable {
         switch self {
         case .enabled, .enabledInfo:
             return VanitySettingsSection.main.rawValue
-        case .profileHeader, .phone, .usernames, .level, .stars, .profileInfo:
+        case .profileHeader, .premium, .phone, .usernames, .level, .stars, .profileInfo:
             return VanitySettingsSection.profile.rawValue
         case .giftsHeader, .slug, .addBySlug, .builder, .gift, .giftsInfo:
             return VanitySettingsSection.gifts.rawValue
@@ -97,26 +100,28 @@ private enum VanitySettingsEntry: ItemListNodeEntry, Equatable {
             return 1
         case .profileHeader:
             return 10
-        case .phone:
+        case .premium:
             return 11
-        case .usernames:
+        case .phone:
             return 12
-        case .level:
+        case .usernames:
             return 13
-        case .stars:
+        case .level:
             return 14
-        case .profileInfo:
+        case .stars:
             return 15
+        case .profileInfo:
+            return 16
         case .giftsHeader:
             return 100
-        case .slug:
-            return 101
-        case .addBySlug:
-            return 102
         case .builder:
+            return 101
+        case .slug:
+            return 102
+        case .addBySlug:
             return 103
         case let .gift(index, _, _, _):
-            return 110 + index
+            return 110 + min(index, 880)
         case .giftsInfo:
             return 999
         case .channelsHeader:
@@ -144,71 +149,83 @@ private enum VanitySettingsEntry: ItemListNodeEntry, Equatable {
         let arguments = arguments as! VanitySettingsArguments
         switch self {
         case let .enabled(value):
-            return ItemListSwitchItem(presentationData: presentationData, title: "Включить мод", value: value, sectionId: self.section, style: .blocks, updated: { value in
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Включить мод", value: value, sectionId: self.section, style: .blocks, updated: { value in
                 arguments.toggleEnabled(value)
             })
         case .enabledInfo:
             return ItemListTextItem(presentationData: presentationData, text: .plain("Всё, что задано здесь, видно только на этом телефоне и не отправляется в Telegram. Подменённое всегда помечено значком \(VanityMod.mark)."), sectionId: self.section)
         case .profileHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "ПРОФИЛЬ", sectionId: self.section)
+        case let .premium(value):
+            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: "Значок Premium у имени", value: value, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.togglePremium(value)
+            })
         case let .phone(text):
-            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Номер"), text: text, placeholder: "+888 0000 0000", type: .regular(capitalization: false, autocorrection: false), sectionId: self.section, textUpdated: { value in
+            return ItemListSingleLineInputItem(presentationData: presentationData, systemStyle: .glass, title: NSAttributedString(string: "Номер"), text: text, placeholder: "+888 0000 0000", type: .regular(capitalization: false, autocorrection: false), sectionId: self.section, textUpdated: { value in
                 arguments.updatePhone(value)
             }, action: {})
         case let .usernames(text):
-            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Юзернеймы"), text: text, placeholder: "name1, name2", type: .regular(capitalization: false, autocorrection: false), sectionId: self.section, textUpdated: { value in
+            return ItemListSingleLineInputItem(presentationData: presentationData, systemStyle: .glass, title: NSAttributedString(string: "Юзернеймы"), text: text, placeholder: "name1, name2", type: .regular(capitalization: false, autocorrection: false), sectionId: self.section, textUpdated: { value in
                 arguments.updateUsernames(value)
             }, action: {})
         case let .level(text):
-            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Уровень"), text: text, placeholder: "0 — настоящий", type: .number, sectionId: self.section, textUpdated: { value in
+            return ItemListSingleLineInputItem(presentationData: presentationData, systemStyle: .glass, title: NSAttributedString(string: "Уровень"), text: text, placeholder: "0 — настоящий", type: .number, sectionId: self.section, textUpdated: { value in
                 arguments.updateLevel(value)
             }, action: {})
         case let .stars(text):
-            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Звёзды"), text: text, placeholder: "0 — настоящие", type: .number, sectionId: self.section, textUpdated: { value in
+            return ItemListSingleLineInputItem(presentationData: presentationData, systemStyle: .glass, title: NSAttributedString(string: "Звёзды"), text: text, placeholder: "0 — настоящие", type: .number, sectionId: self.section, textUpdated: { value in
                 arguments.updateStars(value)
             }, action: {})
         case .profileInfo:
-            return ItemListTextItem(presentationData: presentationData, text: .plain("Юзернеймы через запятую: первый — основной. Пустое поле — показывается настоящее значение. Звёзды только показываются: платежи используют настоящий баланс."), sectionId: self.section)
+            return ItemListTextItem(presentationData: presentationData, text: .plain("Юзернеймы через запятую: первый — основной. Пустое поле — показывается настоящее. Значок Premium и звёзды — только картинка: функции Premium и платежи остаются настоящими."), sectionId: self.section)
         case .giftsHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "ПОДАРКИ", sectionId: self.section)
         case let .slug(text):
-            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Ссылка"), text: text, placeholder: "t.me/nft/PlushPepe-1", type: .regular(capitalization: false, autocorrection: false), sectionId: self.section, textUpdated: { value in
+            return ItemListSingleLineInputItem(presentationData: presentationData, systemStyle: .glass, title: NSAttributedString(string: "Ссылка"), text: text, placeholder: "t.me/nft/PlushPepe-1", type: .regular(capitalization: false, autocorrection: false), sectionId: self.section, textUpdated: { value in
                 arguments.updateSlug(value)
             }, action: {
                 arguments.addBySlug()
             })
         case let .addBySlug(isLoading):
-            return ItemListActionItem(presentationData: presentationData, title: isLoading ? "Ищу подарок…" : "Добавить копию по ссылке", kind: isLoading ? .disabled : .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: isLoading ? "Ищу подарок…" : "Добавить копию по ссылке", kind: isLoading ? .disabled : .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.addBySlug()
             })
         case .builder:
-            return ItemListDisclosureItem(presentationData: presentationData, title: "Создать свой подарок", label: "", sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "🎁 Создать свой подарок", label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openBuilder()
             })
-        case let .gift(_, id, title, subtitle):
-            return ItemListDisclosureItem(presentationData: presentationData, title: title, label: subtitle, sectionId: self.section, style: .blocks, action: {
+        case let .gift(_, id, gift, pinned):
+            let names = gift.attributes.compactMap { attribute -> String? in
+                switch attribute {
+                case let .model(name, _, _, _), let .pattern(name, _, _), let .backdrop(name, _, _, _, _, _, _):
+                    return name
+                case .originalInfo:
+                    return nil
+                }
+            }
+            return VanityGiftPreviewItem(context: arguments.context, presentationData: presentationData, gift: gift, layout: .row, title: "\(pinned ? "📌 " : "")\(gift.title) #\(gift.number)", subtitle: names.joined(separator: " · "), sectionId: self.section, action: {
                 arguments.openGift(id)
             })
         case .giftsInfo:
-            return ItemListTextItem(presentationData: presentationData, text: .plain("Подарки мода стоят первыми в профиле, закреплённые — у аватарки. Нажми на подарок, чтобы посмотреть, закрепить или удалить."), sectionId: self.section)
+            return ItemListTextItem(presentationData: presentationData, text: .plain("Подарки мода стоят первыми в профиле, закреплённые (📌) — у аватарки. Нажми на подарок: посмотреть, закрепить или удалить."), sectionId: self.section)
         case .channelsHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "МОИ КАНАЛЫ", sectionId: self.section)
         case let .channelTitle(_, _, title):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: title.uppercased(), sectionId: self.section)
         case let .channelSubscribers(_, peerId, text):
-            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Подписчики"), text: text, placeholder: "настоящие", type: .number, sectionId: self.section, textUpdated: { value in
+            return ItemListSingleLineInputItem(presentationData: presentationData, systemStyle: .glass, title: NSAttributedString(string: "Подписчики"), text: text, placeholder: "настоящие", type: .number, sectionId: self.section, textUpdated: { value in
                 arguments.updateChannelSubscribers(peerId, value)
             }, action: {})
         case let .channelViews(_, peerId, text):
-            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Просмотры поста"), text: text, placeholder: "настоящие", type: .number, sectionId: self.section, textUpdated: { value in
+            return ItemListSingleLineInputItem(presentationData: presentationData, systemStyle: .glass, title: NSAttributedString(string: "Просмотры поста"), text: text, placeholder: "настоящие", type: .number, sectionId: self.section, textUpdated: { value in
                 arguments.updateChannelViews(peerId, value)
             }, action: {})
         case let .channelRemove(_, peerId):
-            return ItemListActionItem(presentationData: presentationData, title: "Убрать канал", kind: .destructive, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Убрать канал", kind: .destructive, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.removeChannel(peerId)
             })
         case .addChannel:
-            return ItemListActionItem(presentationData: presentationData, title: "Добавить канал", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Добавить канал", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
                 arguments.addChannel()
             })
         case .channelsInfo:
@@ -235,6 +252,7 @@ private func vanitySettingsEntries(settings: VanitySettings, state: VanitySettin
     entries.append(.enabledInfo)
 
     entries.append(.profileHeader)
+    entries.append(.premium(settings.premium))
     entries.append(.phone(settings.phone))
     entries.append(.usernames(settings.usernames.joined(separator: ", ")))
     entries.append(.level(numberText(settings.level)))
@@ -242,20 +260,11 @@ private func vanitySettingsEntries(settings: VanitySettings, state: VanitySettin
     entries.append(.profileInfo)
 
     entries.append(.giftsHeader)
+    entries.append(.builder)
     entries.append(.slug(state.slug))
     entries.append(.addBySlug(state.isAddingBySlug))
-    entries.append(.builder)
     for (index, gift) in settings.gifts.enumerated() {
-        let names = gift.gift.attributes.compactMap { attribute -> String? in
-            switch attribute {
-            case let .model(name, _, _, _), let .pattern(name, _, _), let .backdrop(name, _, _, _, _, _, _):
-                return name
-            default:
-                return nil
-            }
-        }
-        let title = "\(gift.pinned ? "📌 " : "")\(gift.gift.title) #\(gift.gift.number)"
-        entries.append(.gift(Int32(index), gift.id, title, names.first ?? ""))
+        entries.append(.gift(Int32(index), gift.id, gift.gift, gift.pinned))
     }
     entries.append(.giftsInfo)
 
@@ -309,6 +318,8 @@ public func vanitySettingsController(context: AccountContext) -> ViewController 
 
     let arguments = VanitySettingsArguments(context: context, toggleEnabled: { value in
         VanityMod.shared.update { $0.enabled = value }
+    }, togglePremium: { value in
+        VanityMod.shared.update { $0.premium = value }
     }, updatePhone: { value in
         VanityMod.shared.update { $0.phone = value }
     }, updateUsernames: { value in

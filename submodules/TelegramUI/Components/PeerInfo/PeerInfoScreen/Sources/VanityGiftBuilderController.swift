@@ -9,32 +9,32 @@ import PresentationDataUtils
 import AccountContext
 import GiftViewScreen
 
-// The Vanity mod's gift builder: a base gift, then the model, backdrop and pattern of the
-// collectible, its number and how many were issued.
+// The Vanity mod's gift builder: a base gift, then the model, backdrop and symbol of the
+// collectible — picked in Telegram's own variants screen, with every option drawn — its
+// number and how many were issued. The gift as it will look stays at the top throughout.
 
 private final class VanityGiftBuilderArguments {
+    let context: AccountContext
     let selectBase: () -> Void
-    let selectModel: () -> Void
-    let selectBackdrop: () -> Void
-    let selectPattern: () -> Void
+    let openVariants: (StarGift.UniqueGift.Attribute.AttributeType?) -> Void
     let updateNumber: (String) -> Void
     let updateTotal: (String) -> Void
-    let preview: () -> Void
+    let openPreview: () -> Void
     let add: () -> Void
 
-    init(selectBase: @escaping () -> Void, selectModel: @escaping () -> Void, selectBackdrop: @escaping () -> Void, selectPattern: @escaping () -> Void, updateNumber: @escaping (String) -> Void, updateTotal: @escaping (String) -> Void, preview: @escaping () -> Void, add: @escaping () -> Void) {
+    init(context: AccountContext, selectBase: @escaping () -> Void, openVariants: @escaping (StarGift.UniqueGift.Attribute.AttributeType?) -> Void, updateNumber: @escaping (String) -> Void, updateTotal: @escaping (String) -> Void, openPreview: @escaping () -> Void, add: @escaping () -> Void) {
+        self.context = context
         self.selectBase = selectBase
-        self.selectModel = selectModel
-        self.selectBackdrop = selectBackdrop
-        self.selectPattern = selectPattern
+        self.openVariants = openVariants
         self.updateNumber = updateNumber
         self.updateTotal = updateTotal
-        self.preview = preview
+        self.openPreview = openPreview
         self.add = add
     }
 }
 
 private enum VanityGiftBuilderSection: Int32 {
+    case preview
     case base
     case attributes
     case number
@@ -42,52 +42,66 @@ private enum VanityGiftBuilderSection: Int32 {
 }
 
 private enum VanityGiftBuilderEntry: ItemListNodeEntry, Equatable {
+    case preview(StarGift.UniqueGift?, String, String)
     case base(String)
     case loading
+    case attributesHeader
+    case variants
     case model(String)
     case backdrop(String)
-    case pattern(String)
+    case symbol(String)
+    case numberHeader
     case number(String)
     case total(String)
-    case preview(Bool)
     case add(Bool)
+    case openPreview(Bool)
     case info
 
     var section: ItemListSectionId {
         switch self {
+        case .preview:
+            return VanityGiftBuilderSection.preview.rawValue
         case .base, .loading:
             return VanityGiftBuilderSection.base.rawValue
-        case .model, .backdrop, .pattern:
+        case .attributesHeader, .variants, .model, .backdrop, .symbol:
             return VanityGiftBuilderSection.attributes.rawValue
-        case .number, .total:
+        case .numberHeader, .number, .total:
             return VanityGiftBuilderSection.number.rawValue
-        case .preview, .add, .info:
+        case .add, .openPreview, .info:
             return VanityGiftBuilderSection.actions.rawValue
         }
     }
 
     var stableId: Int32 {
         switch self {
-        case .base:
-            return 0
-        case .loading:
-            return 1
-        case .model:
-            return 10
-        case .backdrop:
-            return 11
-        case .pattern:
-            return 12
-        case .number:
-            return 20
-        case .total:
-            return 21
         case .preview:
+            return 0
+        case .base:
+            return 10
+        case .loading:
+            return 11
+        case .attributesHeader:
+            return 20
+        case .variants:
+            return 21
+        case .model:
+            return 22
+        case .backdrop:
+            return 23
+        case .symbol:
+            return 24
+        case .numberHeader:
             return 30
-        case .add:
+        case .number:
             return 31
-        case .info:
+        case .total:
             return 32
+        case .add:
+            return 40
+        case .openPreview:
+            return 41
+        case .info:
+            return 42
         }
     }
 
@@ -98,142 +112,152 @@ private enum VanityGiftBuilderEntry: ItemListNodeEntry, Equatable {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! VanityGiftBuilderArguments
         switch self {
+        case let .preview(gift, title, subtitle):
+            return VanityGiftPreviewItem(context: arguments.context, presentationData: presentationData, gift: gift, layout: .large, title: title, subtitle: subtitle, sectionId: self.section, action: nil)
         case let .base(label):
-            return ItemListDisclosureItem(presentationData: presentationData, title: "Подарок", label: label, sectionId: self.section, style: .blocks, action: {
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Подарок", label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.selectBase()
             })
         case .loading:
-            return ItemListTextItem(presentationData: presentationData, text: .plain("Загружаю модели, фоны и узоры…"), sectionId: self.section)
+            return ItemListTextItem(presentationData: presentationData, text: .plain("Загружаю модели, фоны и символы…"), sectionId: self.section)
+        case .attributesHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "ВНЕШНИЙ ВИД", sectionId: self.section)
+        case .variants:
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Выбрать модель, фон и символ", kind: .generic, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+                arguments.openVariants(nil)
+            })
         case let .model(label):
-            return ItemListDisclosureItem(presentationData: presentationData, title: "Модель", label: label, sectionId: self.section, style: .blocks, action: {
-                arguments.selectModel()
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Модель", label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openVariants(.model)
             })
         case let .backdrop(label):
-            return ItemListDisclosureItem(presentationData: presentationData, title: "Фон", label: label, sectionId: self.section, style: .blocks, action: {
-                arguments.selectBackdrop()
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Фон", label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openVariants(.backdrop)
             })
-        case let .pattern(label):
-            return ItemListDisclosureItem(presentationData: presentationData, title: "Узор", label: label, sectionId: self.section, style: .blocks, action: {
-                arguments.selectPattern()
+        case let .symbol(label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Символ", label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openVariants(.pattern)
             })
+        case .numberHeader:
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: "НОМЕР", sectionId: self.section)
         case let .number(text):
-            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Номер #"), text: text, placeholder: "1", type: .number, sectionId: self.section, textUpdated: { value in
+            return ItemListSingleLineInputItem(presentationData: presentationData, systemStyle: .glass, title: NSAttributedString(string: "Номер #"), text: text, placeholder: "1", type: .number, sectionId: self.section, textUpdated: { value in
                 arguments.updateNumber(value)
             }, action: {})
         case let .total(text):
-            return ItemListSingleLineInputItem(presentationData: presentationData, title: NSAttributedString(string: "Всего выпущено"), text: text, placeholder: "10000", type: .number, sectionId: self.section, textUpdated: { value in
+            return ItemListSingleLineInputItem(presentationData: presentationData, systemStyle: .glass, title: NSAttributedString(string: "Всего выпущено"), text: text, placeholder: "10000", type: .number, sectionId: self.section, textUpdated: { value in
                 arguments.updateTotal(value)
             }, action: {})
-        case let .preview(enabled):
-            return ItemListActionItem(presentationData: presentationData, title: "Посмотреть, как выглядит", kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
-                arguments.preview()
-            })
         case let .add(enabled):
-            return ItemListActionItem(presentationData: presentationData, title: "Добавить в профиль", kind: enabled ? .generic : .disabled, alignment: .natural, sectionId: self.section, style: .blocks, action: {
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Добавить в профиль", kind: enabled ? .generic : .disabled, alignment: .center, sectionId: self.section, style: .blocks, action: {
                 arguments.add()
             })
+        case let .openPreview(enabled):
+            return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: "Открыть в окне подарка", kind: enabled ? .generic : .disabled, alignment: .center, sectionId: self.section, style: .blocks, action: {
+                arguments.openPreview()
+            })
         case .info:
-            return ItemListTextItem(presentationData: presentationData, text: .plain("Подарок появится в твоём профиле первым, с отметкой \(VanityMod.mark). Он есть только на этом телефоне."), sectionId: self.section)
+            return ItemListTextItem(presentationData: presentationData, text: .plain("Подарок встанет в профиле первым, с красной лентой \(VanityMod.mark). Он есть только на этом телефоне."), sectionId: self.section)
         }
     }
-}
-
-private struct VanityBaseGift: Equatable {
-    let id: Int64
-    let title: String
-    let total: Int32?
 }
 
 private struct VanityGiftBuilderState: Equatable {
-    var base: VanityBaseGift?
+    var base: StarGift?
     var isLoading = false
-    var models: [StarGift.UniqueGift.Attribute] = []
-    var backdrops: [StarGift.UniqueGift.Attribute] = []
-    var patterns: [StarGift.UniqueGift.Attribute] = []
-    var model: Int = 0
-    var backdrop: Int = 0
-    var pattern: Int = 0
+    var attributes: [StarGift.UniqueGift.Attribute] = []
+    var model: StarGift.UniqueGift.Attribute?
+    var backdrop: StarGift.UniqueGift.Attribute?
+    var symbol: StarGift.UniqueGift.Attribute?
     var number = "1"
     var total = "10000"
 
-    var attributes: [StarGift.UniqueGift.Attribute]? {
-        guard self.models.indices.contains(self.model), self.backdrops.indices.contains(self.backdrop), self.patterns.indices.contains(self.pattern) else {
+    var baseGift: StarGift.Gift? {
+        if case let .generic(gift) = self.base {
+            return gift
+        }
+        return nil
+    }
+
+    var selected: [StarGift.UniqueGift.Attribute]? {
+        guard let model = self.model, let backdrop = self.backdrop, let symbol = self.symbol else {
             return nil
         }
-        return [self.models[self.model], self.backdrops[self.backdrop], self.patterns[self.pattern]]
+        return [model, backdrop, symbol]
+    }
+
+    var numberValue: Int32 {
+        return Int32(clamping: max(1, Int(self.number.filter { $0.isASCII && $0.isNumber }.prefix(9)) ?? 1))
+    }
+
+    var totalValue: Int32 {
+        return Int32(clamping: max(1, Int(self.total.filter { $0.isASCII && $0.isNumber }.prefix(9)) ?? 1))
     }
 }
 
-private func attributeName(_ attribute: StarGift.UniqueGift.Attribute) -> String {
+private func attributeName(_ attribute: StarGift.UniqueGift.Attribute?) -> String {
+    guard let attribute else {
+        return "—"
+    }
     switch attribute {
     case let .model(name, _, _, _), let .pattern(name, _, _), let .backdrop(name, _, _, _, _, _, _):
         return name
     case .originalInfo:
-        return ""
-    }
-}
-
-private func attributeRarity(_ attribute: StarGift.UniqueGift.Attribute) -> String {
-    let rarity: StarGift.UniqueGift.Attribute.Rarity
-    switch attribute {
-    case let .model(_, _, value, _), let .pattern(_, _, value), let .backdrop(_, _, _, _, _, _, value):
-        rarity = value
-    case .originalInfo:
-        return ""
-    }
-    switch rarity {
-    case let .permille(value):
-        return value > 0 ? "\(Double(value) / 10.0)%" : "< 0.1%"
-    case .uncommon:
-        return "Uncommon"
-    case .rare:
-        return "Rare"
-    case .epic:
-        return "Epic"
-    case .legendary:
-        return "Legendary"
-    }
-}
-
-private func attributeLabel(_ list: [StarGift.UniqueGift.Attribute], _ index: Int) -> String {
-    guard list.indices.contains(index) else {
         return "—"
     }
-    return "\(attributeName(list[index])) · \(attributeRarity(list[index]))"
 }
 
-/// every attribute of one kind the server knows for a gift, by name, without repeats
-private func mergeAttributes(_ lists: [[StarGift.UniqueGift.Attribute]], kind: StarGift.UniqueGift.Attribute.AttributeType) -> [StarGift.UniqueGift.Attribute] {
+/// every attribute the server knows for a gift, without repeats
+private func mergeAttributes(_ lists: [[StarGift.UniqueGift.Attribute]]) -> [StarGift.UniqueGift.Attribute] {
     var seen = Set<String>()
     var result: [StarGift.UniqueGift.Attribute] = []
     for list in lists {
-        for attribute in list where attribute.attributeType == kind {
-            let name = attributeName(attribute)
-            if !seen.contains(name) {
-                seen.insert(name)
+        for attribute in list where attribute.attributeType != .originalInfo {
+            let key = "\(attribute.attributeType)-\(attributeName(attribute))"
+            if !seen.contains(key) {
+                seen.insert(key)
                 result.append(attribute)
             }
         }
     }
-    return result.sorted(by: { attributeName($0) < attributeName($1) })
+    return result
 }
 
-private func vanityGiftBuilderEntries(state: VanityGiftBuilderState) -> [VanityGiftBuilderEntry] {
+private func firstAttribute(_ attributes: [StarGift.UniqueGift.Attribute], _ kind: StarGift.UniqueGift.Attribute.AttributeType) -> StarGift.UniqueGift.Attribute? {
+    return attributes.first(where: { $0.attributeType == kind })
+}
+
+private func makeGift(state: VanityGiftBuilderState, accountPeerId: EnginePeer.Id, id: Int64) -> StarGift.UniqueGift? {
+    guard let base = state.baseGift, let attributes = state.selected else {
+        return nil
+    }
+    return VanityMod.customGift(giftId: base.id, title: base.title ?? "Gift", number: state.numberValue, total: state.totalValue, attributes: attributes, accountPeerId: accountPeerId, id: id)
+}
+
+private func vanityGiftBuilderEntries(state: VanityGiftBuilderState, accountPeerId: EnginePeer.Id) -> [VanityGiftBuilderEntry] {
     var entries: [VanityGiftBuilderEntry] = []
-    entries.append(.base(state.base?.title ?? "Выбрать"))
+    let gift = makeGift(state: state, accountPeerId: accountPeerId, id: 0)
+    let title = gift.map { "\($0.title) #\($0.number)" } ?? "Твой подарок"
+    let subtitle = gift != nil ? "\(attributeName(state.model)) · \(attributeName(state.backdrop)) · \(attributeName(state.symbol))" : ""
+    entries.append(.preview(gift, title, subtitle))
+
+    entries.append(.base(state.baseGift?.title ?? "Выбрать"))
     if state.isLoading {
         entries.append(.loading)
     }
-    if state.base != nil && !state.isLoading {
-        entries.append(.model(attributeLabel(state.models, state.model)))
-        entries.append(.backdrop(attributeLabel(state.backdrops, state.backdrop)))
-        entries.append(.pattern(attributeLabel(state.patterns, state.pattern)))
+    if state.baseGift != nil && !state.isLoading && !state.attributes.isEmpty {
+        entries.append(.attributesHeader)
+        entries.append(.variants)
+        entries.append(.model(attributeName(state.model)))
+        entries.append(.backdrop(attributeName(state.backdrop)))
+        entries.append(.symbol(attributeName(state.symbol)))
+        entries.append(.numberHeader)
         entries.append(.number(state.number))
         entries.append(.total(state.total))
     }
-    let ready = state.attributes != nil
-    entries.append(.preview(ready))
+    let ready = gift != nil
     entries.append(.add(ready))
+    entries.append(.openPreview(ready))
     entries.append(.info)
     return entries
 }
@@ -260,43 +284,22 @@ func vanityGiftBuilderController(context: AccountContext) -> ViewController {
         presentControllerImpl?(textAlertController(context: context, title: nil, text: text, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]))
     }
 
-    /// a list in an action sheet; picking a row calls back with its index
-    let presentList: (String, [String], @escaping (Int) -> Void) -> Void = { title, rows, selected in
-        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-        let actionSheet = ActionSheetController(presentationData: presentationData)
-        var items: [ActionSheetItem] = [ActionSheetTextItem(title: title)]
-        for (index, row) in rows.enumerated() {
-            items.append(ActionSheetButtonItem(title: row, color: .accent, action: { [weak actionSheet] in
-                actionSheet?.dismissAnimated()
-                selected(index)
-            }))
+    let loadAttributes: (StarGift) -> Void = { base in
+        guard case let .generic(gift) = base else {
+            return
         }
-        actionSheet.setItemGroups([
-            ActionSheetItemGroup(items: items),
-            ActionSheetItemGroup(items: [
-                ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak actionSheet] in
-                    actionSheet?.dismissAnimated()
-                })
-            ])
-        ])
-        presentControllerImpl?(actionSheet)
-    }
-
-    let loadAttributes: (VanityBaseGift) -> Void = { base in
         updateState { state in
             state.base = base
             state.isLoading = true
-            state.models = []
-            state.backdrops = []
-            state.patterns = []
-            state.model = 0
-            state.backdrop = 0
-            state.pattern = 0
-            if let total = base.total {
+            state.attributes = []
+            state.model = nil
+            state.backdrop = nil
+            state.symbol = nil
+            if let total = gift.availability?.total {
                 state.total = "\(total)"
             }
         }
-        let resaleContext = ResaleGiftsContext(account: context.account, giftId: base.id, forCrafting: false)
+        let resaleContext = ResaleGiftsContext(account: context.account, giftId: gift.id, forCrafting: false)
         let resaleAttributes = resaleContext.state
         |> filter { state in
             return !state.attributes.isEmpty || state.dataState != .loading
@@ -306,81 +309,109 @@ func vanityGiftBuilderController(context: AccountContext) -> ViewController {
             return state.attributes
         }
         |> timeout(10.0, queue: .mainQueue(), alternate: .single([]))
-        let previewAttributes = context.engine.payments.starGiftUpgradePreview(giftId: base.id)
+        let previewAttributes = context.engine.payments.starGiftUpgradePreview(giftId: gift.id)
         |> map { preview -> [StarGift.UniqueGift.Attribute] in
             return preview?.attributes ?? []
         }
         attributesDisposable.set((combineLatest(resaleAttributes, previewAttributes)
         |> deliverOnMainQueue).start(next: { resale, preview in
             let _ = resaleContext
-            let lists = [resale, preview]
+            let attributes = mergeAttributes([resale, preview])
             updateState { state in
                 state.isLoading = false
-                state.models = mergeAttributes(lists, kind: .model)
-                state.backdrops = mergeAttributes(lists, kind: .backdrop)
-                state.patterns = mergeAttributes(lists, kind: .pattern)
+                state.attributes = attributes
+                state.model = firstAttribute(attributes, .model)
+                state.backdrop = firstAttribute(attributes, .backdrop)
+                state.symbol = firstAttribute(attributes, .pattern)
             }
-            if lists.allSatisfy({ $0.isEmpty }) {
+            if attributes.isEmpty {
                 showAlert("Сервер не отдаёт модели для этого подарка. Выбери другой.")
             }
         }))
     }
 
-    let makeGift: () -> StarGift.UniqueGift? = {
-        let state = stateValue.with { $0 }
-        guard let base = state.base, let attributes = state.attributes else {
-            return nil
-        }
-        let number = Int32(clamping: max(1, Int(state.number.filter { $0.isASCII && $0.isNumber }.prefix(9)) ?? 1))
-        let total = Int32(clamping: max(1, Int(state.total.filter { $0.isASCII && $0.isNumber }.prefix(9)) ?? 1))
-        return VanityMod.customGift(giftId: base.id, title: base.title, number: number, total: total, attributes: attributes, accountPeerId: context.account.peerId, id: Int64.random(in: 1 ..< Int64.max))
-    }
-
-    let arguments = VanityGiftBuilderArguments(selectBase: {
+    let arguments = VanityGiftBuilderArguments(context: context, selectBase: {
         actionsDisposable.add((context.engine.payments.cachedStarGifts()
         |> take(1)
         |> deliverOnMainQueue).start(next: { gifts in
-            var bases: [VanityBaseGift] = []
+            var bases: [StarGift] = []
             var seen = Set<Int64>()
             for gift in gifts ?? [] {
-                if case let .generic(gift) = gift, gift.availability != nil, !seen.contains(gift.id) {
-                    seen.insert(gift.id)
-                    bases.append(VanityBaseGift(id: gift.id, title: gift.title ?? "Gift", total: gift.availability?.total))
+                if case let .generic(generic) = gift, generic.availability != nil, !seen.contains(generic.id) {
+                    seen.insert(generic.id)
+                    bases.append(gift)
                 }
             }
             if bases.isEmpty {
                 showAlert("Список подарков ещё не загружен. Открой магазин подарков и попробуй снова.")
                 return
             }
-            presentList("Выбери подарок", bases.map(\.title), { index in
-                loadAttributes(bases[index])
-            })
+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+            let actionSheet = ActionSheetController(presentationData: presentationData)
+            var items: [ActionSheetItem] = [ActionSheetTextItem(title: "Выбери подарок")]
+            for base in bases {
+                guard case let .generic(generic) = base else {
+                    continue
+                }
+                items.append(ActionSheetButtonItem(title: generic.title ?? "Gift", color: .accent, action: { [weak actionSheet] in
+                    actionSheet?.dismissAnimated()
+                    loadAttributes(base)
+                }))
+            }
+            actionSheet.setItemGroups([
+                ActionSheetItemGroup(items: items),
+                ActionSheetItemGroup(items: [
+                    ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak actionSheet] in
+                        actionSheet?.dismissAnimated()
+                    })
+                ])
+            ])
+            presentControllerImpl?(actionSheet)
         }))
-    }, selectModel: {
+    }, openVariants: { focus in
         let state = stateValue.with { $0 }
-        presentList("Модель", state.models.indices.map { attributeLabel(state.models, $0) }, { index in
-            updateState { $0.model = index }
+        guard let base = state.base, !state.attributes.isEmpty else {
+            return
+        }
+        let focused: StarGift.UniqueGift.Attribute?
+        switch focus {
+        case .some(.model):
+            focused = state.model
+        case .some(.backdrop):
+            focused = state.backdrop
+        case .some(.pattern):
+            focused = state.symbol
+        default:
+            focused = nil
+        }
+        // * Telegram's own variants screen: every option drawn, the gift at the top as picked
+        let variants = GiftUpgradeVariantsScreen(context: context, gift: base, attributes: state.attributes, selectedAttributes: state.selected, focusedAttribute: focused, selectionUpdated: { selected in
+            updateState { state in
+                for attribute in selected {
+                    switch attribute.attributeType {
+                    case .model:
+                        state.model = attribute
+                    case .backdrop:
+                        state.backdrop = attribute
+                    case .pattern:
+                        state.symbol = attribute
+                    case .originalInfo:
+                        break
+                    }
+                }
+            }
         })
-    }, selectBackdrop: {
-        let state = stateValue.with { $0 }
-        presentList("Фон", state.backdrops.indices.map { attributeLabel(state.backdrops, $0) }, { index in
-            updateState { $0.backdrop = index }
-        })
-    }, selectPattern: {
-        let state = stateValue.with { $0 }
-        presentList("Узор", state.patterns.indices.map { attributeLabel(state.patterns, $0) }, { index in
-            updateState { $0.pattern = index }
-        })
+        pushControllerImpl?(variants)
     }, updateNumber: { value in
         updateState { $0.number = value }
     }, updateTotal: { value in
         updateState { $0.total = value }
-    }, preview: {
-        if let gift = makeGift() {
+    }, openPreview: {
+        if let gift = makeGift(state: stateValue.with { $0 }, accountPeerId: context.account.peerId, id: Int64.random(in: 1 ..< Int64.max)) {
             pushControllerImpl?(GiftViewScreen(context: context, subject: .uniqueGift(gift, context.account.peerId)))
         }
     }, add: {
-        if let gift = makeGift() {
+        if let gift = makeGift(state: stateValue.with { $0 }, accountPeerId: context.account.peerId, id: Int64.random(in: 1 ..< Int64.max)) {
             VanityMod.shared.addGift(gift)
             dismissImpl?()
         }
@@ -390,7 +421,7 @@ func vanityGiftBuilderController(context: AccountContext) -> ViewController {
     |> deliverOnMainQueue
     |> map { presentationData, state -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text("Свой подарок"), leftNavigationButton: nil, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back))
-        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: vanityGiftBuilderEntries(state: state), style: .blocks, animateChanges: false)
+        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: vanityGiftBuilderEntries(state: state, accountPeerId: context.account.peerId), style: .blocks, animateChanges: true)
         return (controllerState, (listState, arguments))
     }
     |> afterDisposed {

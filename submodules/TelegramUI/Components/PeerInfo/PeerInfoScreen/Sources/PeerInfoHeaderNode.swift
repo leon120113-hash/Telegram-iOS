@@ -604,7 +604,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                 credibilityIcon = .scam
             } else if let emojiStatus = peer.emojiStatus {
                 statusIcon = .emojiStatus(emojiStatus)
-            } else if peer.isPremium && !premiumConfiguration.isPremiumDisabled && (peer.id != self.context.account.peerId || self.isSettings || self.isMyProfile) {
+            } else if (peer.isPremium || VanityMod.shared.premium(peerId: peer.id, accountPeerId: self.context.account.peerId)) && !premiumConfiguration.isPremiumDisabled && (peer.id != self.context.account.peerId || self.isSettings || self.isMyProfile) {
                 credibilityIcon = .premium
             } else {
                 credibilityIcon = .none
@@ -1183,7 +1183,8 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         var panelSubtitleString: (text: String, attributes: MultiScaleTextState.Attributes)?
         let usernameString: (text: String, attributes: MultiScaleTextState.Attributes)
         if let peer = peer {
-            isPremium = peer.isPremium
+            // * the Vanity mod's Premium star: the badge only, the subtitle says MOD
+            isPremium = peer.isPremium || VanityMod.shared.premium(peerId: peer.id, accountPeerId: self.context.account.peerId)
             isVerified = peer.isVerified
             isFake = peer.isFake || peer.isScam
         }
@@ -1235,7 +1236,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                 if let mainUsername = vanityUsername ?? user.addressName, !mainUsername.isEmpty {
                     subtitle = "\(subtitle) • @\(mainUsername)"
                 }
-                if vanityPhone != nil || vanityUsername != nil || VanityMod.shared.level(peerId: user.id, accountPeerId: self.context.account.peerId) != nil || VanityMod.shared.gifts(peerId: user.id, accountPeerId: self.context.account.peerId).contains(where: { $0.pinned }) {
+                if vanityPhone != nil || vanityUsername != nil || VanityMod.shared.premium(peerId: user.id, accountPeerId: self.context.account.peerId) || VanityMod.shared.level(peerId: user.id, accountPeerId: self.context.account.peerId) != nil || VanityMod.shared.gifts(peerId: user.id, accountPeerId: self.context.account.peerId).contains(where: { $0.pinned }) {
                     subtitle = "\(subtitle) · \(VanityMod.mark)"
                 }
                 subtitleStringText = subtitle
@@ -1250,7 +1251,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                 // * the profile's level, number or usernames come from the Vanity mod: say so
                 let vanity = VanityMod.shared
                 let accountPeerId = self.context.account.peerId
-                let hasVanity = vanity.level(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.phone(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.usernames(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.gifts(peerId: peer.id, accountPeerId: accountPeerId).contains(where: { $0.pinned })
+                let hasVanity = vanity.premium(peerId: peer.id, accountPeerId: accountPeerId) || vanity.level(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.phone(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.usernames(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.gifts(peerId: peer.id, accountPeerId: accountPeerId).contains(where: { $0.pinned })
                 subtitleStringText = hasVanity ? "\(presentationData.strings.Presence_online) · \(VanityMod.mark)" : presentationData.strings.Presence_online
                 subtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(17.0), color: subtitleColor)
                 smallSubtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(16.0), color: .white, shadowColor: titleShadowColor)

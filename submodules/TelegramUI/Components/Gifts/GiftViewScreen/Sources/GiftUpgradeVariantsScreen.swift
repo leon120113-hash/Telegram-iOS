@@ -33,14 +33,17 @@ private final class GiftUpgradeVariantsScreenComponent: Component {
     let attributes: [StarGift.UniqueGift.Attribute]
     let selectedAttributes: [StarGift.UniqueGift.Attribute]?
     let focusedAttribute: StarGift.UniqueGift.Attribute?
-    
+    /// the model, backdrop and symbol picked so far, each time one is tapped (the Vanity mod's builder)
+    let selectionUpdated: (([StarGift.UniqueGift.Attribute]) -> Void)?
+
     init(
         context: AccountContext,
         gift: StarGift,
         crafted: Bool,
         attributes: [StarGift.UniqueGift.Attribute],
         selectedAttributes: [StarGift.UniqueGift.Attribute]?,
-        focusedAttribute: StarGift.UniqueGift.Attribute?
+        focusedAttribute: StarGift.UniqueGift.Attribute?,
+        selectionUpdated: (([StarGift.UniqueGift.Attribute]) -> Void)?
     ) {
         self.context = context
         self.gift = gift
@@ -48,6 +51,7 @@ private final class GiftUpgradeVariantsScreenComponent: Component {
         self.attributes = attributes
         self.selectedAttributes = selectedAttributes
         self.focusedAttribute = focusedAttribute
+        self.selectionUpdated = selectionUpdated
     }
     
     static func ==(lhs: GiftUpgradeVariantsScreenComponent, rhs: GiftUpgradeVariantsScreenComponent) -> Bool {
@@ -547,7 +551,10 @@ private final class GiftUpgradeVariantsScreenComponent: Component {
                                     case .symbols:
                                         self.selectedSymbol = symbolAttribute
                                     }
-                                    
+                                    if let selectionUpdated = self.component?.selectionUpdated {
+                                        selectionUpdated([self.selectedModel, self.selectedBackdrop, self.selectedSymbol].compactMap { $0 })
+                                    }
+
                                     state.updated(transition: .easeInOut(duration: 0.25))
                                 },
                                 animateAlpha: false
@@ -1243,17 +1250,19 @@ public class GiftUpgradeVariantsScreen: ViewControllerComponentContainer {
         crafted: Bool = false,
         attributes: [StarGift.UniqueGift.Attribute],
         selectedAttributes: [StarGift.UniqueGift.Attribute]?,
-        focusedAttribute: StarGift.UniqueGift.Attribute?
+        focusedAttribute: StarGift.UniqueGift.Attribute?,
+        selectionUpdated: (([StarGift.UniqueGift.Attribute]) -> Void)? = nil
     ) {
         self.context = context
-        
+
         super.init(context: context, component: GiftUpgradeVariantsScreenComponent(
             context: context,
             gift: gift,
             crafted: crafted,
             attributes: attributes,
             selectedAttributes: selectedAttributes,
-            focusedAttribute: focusedAttribute
+            focusedAttribute: focusedAttribute,
+            selectionUpdated: selectionUpdated
         ), navigationBarAppearance: .none, theme: .default)
         
         self.statusBar.statusBarStyle = .Ignore

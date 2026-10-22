@@ -37,6 +37,8 @@ public struct VanityGift: Codable, Equatable {
 
 public struct VanitySettings: Codable, Equatable {
     public var enabled: Bool
+    /// the Premium star beside your own name — a picture, it unlocks nothing
+    public var premium: Bool
     public var phone: String
     /// the first one is the main username, the rest show as "also"
     public var usernames: [String]
@@ -47,10 +49,11 @@ public struct VanitySettings: Codable, Equatable {
     public var channels: [VanityChannel]
     public var gifts: [VanityGift]
 
-    public static let defaultSettings = VanitySettings(enabled: true, phone: "", usernames: [], level: 0, stars: 0, channels: [], gifts: [])
+    public static let defaultSettings = VanitySettings(enabled: true, premium: false, phone: "", usernames: [], level: 0, stars: 0, channels: [], gifts: [])
 
-    public init(enabled: Bool, phone: String, usernames: [String], level: Int32, stars: Int64, channels: [VanityChannel], gifts: [VanityGift]) {
+    public init(enabled: Bool, premium: Bool, phone: String, usernames: [String], level: Int32, stars: Int64, channels: [VanityChannel], gifts: [VanityGift]) {
         self.enabled = enabled
+        self.premium = premium
         self.phone = phone
         self.usernames = usernames
         self.level = level
@@ -61,6 +64,7 @@ public struct VanitySettings: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case enabled
+        case premium
         case phone
         case usernames
         case level
@@ -73,6 +77,7 @@ public struct VanitySettings: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        self.premium = try container.decodeIfPresent(Bool.self, forKey: .premium) ?? false
         self.phone = try container.decodeIfPresent(String.self, forKey: .phone) ?? ""
         self.usernames = try container.decodeIfPresent([String].self, forKey: .usernames) ?? []
         self.level = try container.decodeIfPresent(Int32.self, forKey: .level) ?? 0
@@ -146,6 +151,11 @@ public final class VanityMod {
         }
         let usernames = self.settings.usernames.map(VanityMod.cleanUsername).filter { !$0.isEmpty }
         return usernames.isEmpty ? nil : usernames
+    }
+
+    /// whether your own name shows the Premium star; only the picture, never Premium's features
+    public func premium(peerId: EnginePeer.Id, accountPeerId: EnginePeer.Id) -> Bool {
+        return self.isMine(peerId, accountPeerId: accountPeerId) && self.settings.premium
     }
 
     public func level(peerId: EnginePeer.Id, accountPeerId: EnginePeer.Id) -> Int32? {
