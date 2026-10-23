@@ -92,7 +92,7 @@ public struct VanitySettings: Codable, Equatable {
     }
 }
 
-/// backdrops and symbols collected from every gift, so any gift can wear any of them
+/// models, backdrops and symbols collected from every gift — sold out ones too — so any gift can wear any of them
 public struct VanityAttributePool: Codable, Equatable {
     public var giftIds: [Int64]
     public var attributes: [StarGift.UniqueGift.Attribute]
@@ -179,19 +179,19 @@ public final class VanityMod {
         return pool
     }
 
-    /// adds a gift's backdrops and symbols to the pool, once per gift
+    /// adds a gift's models, backdrops and symbols to the pool, once per gift
     public func addToPool(giftId: Int64, attributes: [StarGift.UniqueGift.Attribute]) {
         var pool = self.attributePool
         var known = Set(pool.attributes.map(VanityMod.attributeKey))
         for attribute in attributes {
             switch attribute {
-            case .backdrop, .pattern:
+            case .model, .backdrop, .pattern:
                 let key = VanityMod.attributeKey(attribute)
                 if !known.contains(key) {
                     known.insert(key)
                     pool.attributes.append(attribute)
                 }
-            case .model, .originalInfo:
+            case .originalInfo:
                 break
             }
         }

@@ -293,9 +293,10 @@ private func vanityGiftBuilderEntries(state: VanityGiftBuilderState, accountPeer
         entries.append(.backdrop(attributeName(state.backdrop)))
         entries.append(.symbol(attributeName(state.symbol)))
         let pool = VanityMod.shared.attributePool.attributes
+        let models = pool.filter { $0.attributeType == .model }.count
         let backdrops = pool.filter { $0.attributeType == .backdrop }.count
         let symbols = pool.filter { $0.attributeType == .pattern }.count
-        var poolText = "Фоны и символы со всех подарков подходят к любому: сейчас \(backdrops) фонов и \(symbols) символов."
+        var poolText = "Модели, фоны и символы всех подарков, и распроданных тоже, подходят к любому: сейчас \(models) моделей, \(backdrops) фонов, \(symbols) символов. Модели этого подарка — первыми."
         if state.poolTotal > 0 && state.poolDone < state.poolTotal {
             poolText += " Собираю: \(state.poolDone) из \(state.poolTotal) подарков…"
         }
@@ -419,7 +420,7 @@ func vanityGiftBuilderController(context: AccountContext) -> ViewController {
             focused = nil
         }
         // * Telegram's own variants screen: every option drawn, the gift at the top as picked;
-        // * this gift's models, and the backdrops and symbols of every gift in the pool
+        // * this gift's own attributes first, then the models, backdrops and symbols of every gift in the pool
         let attributes = mergeAttributes([state.attributes, VanityMod.shared.attributePool.attributes])
         let variants = GiftUpgradeVariantsScreen(context: context, gift: base, attributes: attributes, selectedAttributes: state.selected, focusedAttribute: focused, selectionUpdated: { selected in
             updateState { state in
