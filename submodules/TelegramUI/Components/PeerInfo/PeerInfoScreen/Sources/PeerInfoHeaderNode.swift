@@ -493,6 +493,12 @@ final class PeerInfoHeaderNode: ASDisplayNode {
     
     private var currentPanelStatusData: PeerInfoStatusData?
     func update(width: CGFloat, containerHeight: CGFloat, containerInset: CGFloat, statusBarHeight: CGFloat, navigationHeight: CGFloat, presentedInFormSheet: Bool, isMediaOnly: Bool, contentOffset: CGFloat, paneContainerY: CGFloat, presentationData: PresentationData, peer: EnginePeer?, cachedData: EngineCachedPeerData?, threadData: MessageHistoryThreadData?, peerNotificationSettings: TelegramPeerNotificationSettings?, threadNotificationSettings: TelegramPeerNotificationSettings?, globalNotificationSettings: EngineGlobalNotificationSettings?, statusData: PeerInfoStatusData?, panelStatusData: (PeerInfoStatusData?, PeerInfoStatusData?, CGFloat?), isSecretChat: Bool, isContact: Bool, isSettings: Bool, state: PeerInfoState, profileGiftsContext: ProfileGiftsContext?, screenData: PeerInfoScreenData?, isSearching: Bool, metrics: LayoutMetrics, deviceMetrics: DeviceMetrics, transition: ContainedViewLayoutTransition, additive: Bool, animateHeader: Bool) -> CGFloat {
+        // * the Vanity mod's worn gift: the header takes its backdrop, pattern and model; the subtitle says MOD
+        var peer = peer
+        if case let .user(user)? = peer, let wornStatus = VanityMod.shared.wornStatus(peerId: user.id, accountPeerId: self.context.account.peerId) {
+            peer = .user(user.withUpdatedEmojiStatus(wornStatus))
+        }
+
         if self.appliedCustomNavigationContentNode !== self.customNavigationContentNode {
             if let previous = self.appliedCustomNavigationContentNode {
                 ComponentTransition(transition).setAlpha(view: previous.view, alpha: 0.0, completion: { [weak previous] _ in
@@ -1236,7 +1242,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                 if let mainUsername = vanityUsername ?? user.addressName, !mainUsername.isEmpty {
                     subtitle = "\(subtitle) • @\(mainUsername)"
                 }
-                if vanityPhone != nil || vanityUsername != nil || VanityMod.shared.premium(peerId: user.id, accountPeerId: self.context.account.peerId) || VanityMod.shared.level(peerId: user.id, accountPeerId: self.context.account.peerId) != nil || VanityMod.shared.gifts(peerId: user.id, accountPeerId: self.context.account.peerId).contains(where: { $0.pinned }) {
+                if VanityMod.shared.hasProfileChanges(peerId: user.id, accountPeerId: self.context.account.peerId) {
                     subtitle = "\(subtitle) · \(VanityMod.mark)"
                 }
                 subtitleStringText = subtitle
@@ -1248,10 +1254,8 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                 let subtitleColor: UIColor
                 subtitleColor = .white
                 
-                // * the profile's level, number or usernames come from the Vanity mod: say so
-                let vanity = VanityMod.shared
-                let accountPeerId = self.context.account.peerId
-                let hasVanity = vanity.premium(peerId: peer.id, accountPeerId: accountPeerId) || vanity.level(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.phone(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.usernames(peerId: peer.id, accountPeerId: accountPeerId) != nil || vanity.gifts(peerId: peer.id, accountPeerId: accountPeerId).contains(where: { $0.pinned })
+                // * the profile's looks come from the Vanity mod: say so
+                let hasVanity = VanityMod.shared.hasProfileChanges(peerId: peer.id, accountPeerId: self.context.account.peerId)
                 subtitleStringText = hasVanity ? "\(presentationData.strings.Presence_online) · \(VanityMod.mark)" : presentationData.strings.Presence_online
                 subtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(17.0), color: subtitleColor)
                 smallSubtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(16.0), color: .white, shadowColor: titleShadowColor)

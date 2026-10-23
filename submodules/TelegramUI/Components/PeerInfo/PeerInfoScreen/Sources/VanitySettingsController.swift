@@ -69,7 +69,7 @@ private enum VanitySettingsEntry: ItemListNodeEntry, Equatable {
     case slug(String)
     case addBySlug(Bool)
     case builder
-    case gift(Int32, String, StarGift.UniqueGift, Bool)
+    case gift(Int32, String, StarGift.UniqueGift, Bool, Bool)
     case giftsInfo
     case channelsHeader
     case channelTitle(Int32, Int64, String)
@@ -120,7 +120,7 @@ private enum VanitySettingsEntry: ItemListNodeEntry, Equatable {
             return 102
         case .addBySlug:
             return 103
-        case let .gift(index, _, _, _):
+        case let .gift(index, _, _, _, _):
             return 110 + min(index, 880)
         case .giftsInfo:
             return 999
@@ -194,7 +194,7 @@ private enum VanitySettingsEntry: ItemListNodeEntry, Equatable {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "🎁 Создать свой подарок", label: "", sectionId: self.section, style: .blocks, action: {
                 arguments.openBuilder()
             })
-        case let .gift(_, id, gift, pinned):
+        case let .gift(_, id, gift, pinned, worn):
             let names = gift.attributes.compactMap { attribute -> String? in
                 switch attribute {
                 case let .model(name, _, _, _), let .pattern(name, _, _), let .backdrop(name, _, _, _, _, _, _):
@@ -203,11 +203,11 @@ private enum VanitySettingsEntry: ItemListNodeEntry, Equatable {
                     return nil
                 }
             }
-            return VanityGiftPreviewItem(context: arguments.context, presentationData: presentationData, gift: gift, layout: .row, title: "\(pinned ? "📌 " : "")\(gift.title) #\(gift.number)", subtitle: names.joined(separator: " · "), sectionId: self.section, action: {
+            return VanityGiftPreviewItem(context: arguments.context, presentationData: presentationData, gift: gift, layout: .row, title: "\(worn ? "👑 " : "")\(pinned ? "📌 " : "")\(gift.title) #\(gift.number)", subtitle: names.joined(separator: " · "), sectionId: self.section, action: {
                 arguments.openGift(id)
             })
         case .giftsInfo:
-            return ItemListTextItem(presentationData: presentationData, text: .plain("Подарки мода стоят первыми в профиле, закреплённые (📌) — у аватарки. Нажми на подарок: посмотреть, закрепить или удалить."), sectionId: self.section)
+            return ItemListTextItem(presentationData: presentationData, text: .plain("Подарки мода стоят первыми в профиле, закреплённые (📌) — у аватарки. Надетый (👑) даёт шапке профиля свой фон и узор, а модель встаёт значком у имени. Нажми на подарок, чтобы надеть, закрепить или удалить."), sectionId: self.section)
         case .channelsHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "МОИ КАНАЛЫ", sectionId: self.section)
         case let .channelTitle(_, _, title):
@@ -264,7 +264,7 @@ private func vanitySettingsEntries(settings: VanitySettings, state: VanitySettin
     entries.append(.slug(state.slug))
     entries.append(.addBySlug(state.isAddingBySlug))
     for (index, gift) in settings.gifts.enumerated() {
-        entries.append(.gift(Int32(index), gift.id, gift.gift, gift.pinned))
+        entries.append(.gift(Int32(index), gift.id, gift.gift, gift.pinned, settings.wornGiftId == gift.id))
     }
     entries.append(.giftsInfo)
 
@@ -366,6 +366,10 @@ public func vanitySettingsController(context: AccountContext) -> ViewController 
                 ActionSheetButtonItem(title: "Посмотреть", color: .accent, action: { [weak actionSheet] in
                     actionSheet?.dismissAnimated()
                     pushControllerImpl?(GiftViewScreen(context: context, subject: .uniqueGift(gift.gift, context.account.peerId)))
+                }),
+                ActionSheetButtonItem(title: VanityMod.shared.settings.wornGiftId == id ? "Снять с профиля" : "Надеть на профиль (обложка и значок)", color: .accent, action: { [weak actionSheet] in
+                    actionSheet?.dismissAnimated()
+                    VanityMod.shared.toggleGiftWorn(id: id)
                 }),
                 ActionSheetButtonItem(title: gift.pinned ? "Открепить" : "Закрепить у аватарки", color: .accent, action: { [weak actionSheet] in
                     actionSheet?.dismissAnimated()

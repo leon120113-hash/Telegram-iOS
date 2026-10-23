@@ -48,10 +48,12 @@ public struct VanitySettings: Codable, Equatable {
     public var stars: Int64
     public var channels: [VanityChannel]
     public var gifts: [VanityGift]
+    /// the mod's gift worn as your status: the profile header takes its backdrop, pattern and model
+    public var wornGiftId: String?
 
-    public static let defaultSettings = VanitySettings(enabled: true, premium: false, phone: "", usernames: [], level: 0, stars: 0, channels: [], gifts: [])
+    public static let defaultSettings = VanitySettings(enabled: true, premium: false, phone: "", usernames: [], level: 0, stars: 0, channels: [], gifts: [], wornGiftId: nil)
 
-    public init(enabled: Bool, premium: Bool, phone: String, usernames: [String], level: Int32, stars: Int64, channels: [VanityChannel], gifts: [VanityGift]) {
+    public init(enabled: Bool, premium: Bool, phone: String, usernames: [String], level: Int32, stars: Int64, channels: [VanityChannel], gifts: [VanityGift], wornGiftId: String?) {
         self.enabled = enabled
         self.premium = premium
         self.phone = phone
@@ -60,6 +62,7 @@ public struct VanitySettings: Codable, Equatable {
         self.stars = stars
         self.channels = channels
         self.gifts = gifts
+        self.wornGiftId = wornGiftId
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -71,6 +74,7 @@ public struct VanitySettings: Codable, Equatable {
         case stars
         case channels
         case gifts
+        case wornGiftId
     }
 
     // * fields added later must not lose what was saved before them
@@ -84,6 +88,18 @@ public struct VanitySettings: Codable, Equatable {
         self.stars = try container.decodeIfPresent(Int64.self, forKey: .stars) ?? 0
         self.channels = try container.decodeIfPresent([VanityChannel].self, forKey: .channels) ?? []
         self.gifts = (try? container.decodeIfPresent([VanityGift].self, forKey: .gifts)) ?? []
+        self.wornGiftId = try container.decodeIfPresent(String.self, forKey: .wornGiftId)
+    }
+}
+
+/// backdrops and symbols collected from every gift, so any gift can wear any of them
+public struct VanityAttributePool: Codable, Equatable {
+    public var giftIds: [Int64]
+    public var attributes: [StarGift.UniqueGift.Attribute]
+
+    public init(giftIds: [Int64], attributes: [StarGift.UniqueGift.Attribute]) {
+        self.giftIds = giftIds
+        self.attributes = attributes
     }
 }
 
@@ -133,6 +149,120 @@ public final class VanityMod {
 
     private func isMine(_ peerId: EnginePeer.Id, accountPeerId: EnginePeer.Id) -> Bool {
         return peerId == accountPeerId && self.settings.enabled
+    }
+
+    // MARK: - Attribute pool
+
+    private var poolValue: VanityAttributePool?
+
+    private static var poolUrl: URL? {
+        guard let directory = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else {
+            return nil
+        }
+        return directory.appendingPathComponent("tgmod-attribute-pool.json")
+    }
+
+    /// backdrops and symbols gathered from every gift seen so far, kept in a file of its own
+    public var attributePool: VanityAttributePool {
+        self.lock.lock()
+        defer {
+            self.lock.unlock()
+        }
+        if let poolValue = self.poolValue {
+            return poolValue
+        }
+        var pool = VanityAttributePool(giftIds: [], attributes: [])
+        if let url = VanityMod.poolUrl, let data = try? Data(contentsOf: url), let decoded = try? JSONDecoder().decode(VanityAttributePool.self, from: data) {
+            pool = decoded
+        }
+        self.poolValue = pool
+        return pool
+    }
+
+    /// adds a gift's backdrops and symbols to the pool, once per gift
+    public func addToPool(giftId: Int64, attributes: [StarGift.UniqueGift.Attribute]) {
+        var pool = self.attributePool
+        var known = Set(pool.attributes.map(VanityMod.attributeKey))
+        for attribute in attributes {
+            switch attribute {
+            case .backdrop, .pattern:
+                let key = VanityMod.attributeKey(attribute)
+                if !known.contains(key) {
+                    known.insert(key)
+                    pool.attributes.append(attribute)
+                }
+            case .model, .originalInfo:
+                break
+            }
+        }
+        if !pool.giftIds.contains(giftId) {
+            pool.giftIds.append(giftId)
+        }
+        self.lock.lock()
+        self.poolValue = pool
+        self.lock.unlock()
+        if let url = VanityMod.poolUrl, let data = try? JSONEncoder().encode(pool) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// one key per backdrop (by its id) and per symbol (by its file)
+    public static func attributeKey(_ attribute: StarGift.UniqueGift.Attribute) -> String {
+        switch attribute {
+        case let .model(name, file, _, _):
+            return "m-\(file.fileId.id)-\(name)"
+        case let .pattern(_, file, _):
+            return "p-\(file.fileId.id)"
+        case let .backdrop(_, id, _, _, _, _, _):
+            return "b-\(id)"
+        case .originalInfo:
+            return "o"
+        }
+    }
+
+    /// whether anything the mod shows changes your profile's header: it then says MOD under your name
+    public func hasProfileChanges(peerId: EnginePeer.Id, accountPeerId: EnginePeer.Id) -> Bool {
+        guard self.isMine(peerId, accountPeerId: accountPeerId) else {
+            return false
+        }
+        return self.premium(peerId: peerId, accountPeerId: accountPeerId) ||
+            self.phone(peerId: peerId, accountPeerId: accountPeerId) != nil ||
+            self.usernames(peerId: peerId, accountPeerId: accountPeerId) != nil ||
+            self.level(peerId: peerId, accountPeerId: accountPeerId) != nil ||
+            self.wornStatus(peerId: peerId, accountPeerId: accountPeerId) != nil ||
+            self.settings.gifts.contains(where: { $0.pinned })
+    }
+
+    // MARK: - Worn gift
+
+    /// the status of the mod's gift worn on your profile: its model beside your name, its backdrop and pattern behind
+    public func wornStatus(peerId: EnginePeer.Id, accountPeerId: EnginePeer.Id) -> PeerEmojiStatus? {
+        guard self.isMine(peerId, accountPeerId: accountPeerId) else {
+            return nil
+        }
+        let settings = self.settings
+        guard let wornGiftId = settings.wornGiftId, let gift = settings.gifts.first(where: { $0.id == wornGiftId })?.gift else {
+            return nil
+        }
+        var modelFileId: Int64?
+        var patternFileId: Int64?
+        var colors: (inner: Int32, outer: Int32, pattern: Int32, text: Int32)?
+        for attribute in gift.attributes {
+            switch attribute {
+            case let .model(_, file, _, _):
+                modelFileId = file.fileId.id
+            case let .pattern(_, file, _):
+                patternFileId = file.fileId.id
+            case let .backdrop(_, _, innerColor, outerColor, patternColor, textColor, _):
+                colors = (innerColor, outerColor, patternColor, textColor)
+            case .originalInfo:
+                break
+            }
+        }
+        guard let modelFileId, let patternFileId, let colors else {
+            return nil
+        }
+        return PeerEmojiStatus(content: .starGift(id: gift.id, fileId: modelFileId, title: gift.title, slug: gift.slug, patternFileId: patternFileId, innerColor: colors.inner, outerColor: colors.outer, patternColor: colors.pattern, textColor: colors.text), expirationDate: nil)
     }
 
     /// the number to show in place of your own, digits only — or nil
@@ -295,6 +425,16 @@ public final class VanityMod {
     public func removeGift(id: String) {
         self.update { settings in
             settings.gifts.removeAll(where: { $0.id == id })
+            if settings.wornGiftId == id {
+                settings.wornGiftId = nil
+            }
+        }
+    }
+
+    /// wears the gift on your profile, or takes it off when it is the one worn
+    public func toggleGiftWorn(id: String) {
+        self.update { settings in
+            settings.wornGiftId = settings.wornGiftId == id ? nil : id
         }
     }
 

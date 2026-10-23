@@ -50,6 +50,7 @@ private enum VanityGiftBuilderEntry: ItemListNodeEntry, Equatable {
     case model(String)
     case backdrop(String)
     case symbol(String)
+    case poolInfo(String)
     case numberHeader
     case number(String)
     case total(String)
@@ -63,7 +64,7 @@ private enum VanityGiftBuilderEntry: ItemListNodeEntry, Equatable {
             return VanityGiftBuilderSection.preview.rawValue
         case .base, .loading:
             return VanityGiftBuilderSection.base.rawValue
-        case .attributesHeader, .variants, .model, .backdrop, .symbol:
+        case .attributesHeader, .variants, .model, .backdrop, .symbol, .poolInfo:
             return VanityGiftBuilderSection.attributes.rawValue
         case .numberHeader, .number, .total:
             return VanityGiftBuilderSection.number.rawValue
@@ -90,6 +91,8 @@ private enum VanityGiftBuilderEntry: ItemListNodeEntry, Equatable {
             return 23
         case .symbol:
             return 24
+        case .poolInfo:
+            return 25
         case .numberHeader:
             return 30
         case .number:
@@ -138,6 +141,8 @@ private enum VanityGiftBuilderEntry: ItemListNodeEntry, Equatable {
             return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: "Символ", label: label, sectionId: self.section, style: .blocks, action: {
                 arguments.openVariants(.pattern)
             })
+        case let .poolInfo(text):
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case .numberHeader:
             return ItemListSectionHeaderItem(presentationData: presentationData, text: "НОМЕР", sectionId: self.section)
         case let .number(text):
@@ -171,6 +176,9 @@ private struct VanityGiftBuilderState: Equatable {
     var symbol: StarGift.UniqueGift.Attribute?
     var number = "1"
     var total = "10000"
+    /// gifts whose backdrops and symbols are in the pool, of all there are
+    var poolDone = 0
+    var poolTotal = 0
 
     var baseGift: StarGift.Gift? {
         if case let .generic(gift) = self.base {
@@ -207,13 +215,13 @@ private func attributeName(_ attribute: StarGift.UniqueGift.Attribute?) -> Strin
     }
 }
 
-/// every attribute the server knows for a gift, without repeats
+/// attributes from several lists, without repeats
 private func mergeAttributes(_ lists: [[StarGift.UniqueGift.Attribute]]) -> [StarGift.UniqueGift.Attribute] {
     var seen = Set<String>()
     var result: [StarGift.UniqueGift.Attribute] = []
     for list in lists {
         for attribute in list where attribute.attributeType != .originalInfo {
-            let key = "\(attribute.attributeType)-\(attributeName(attribute))"
+            let key = VanityMod.attributeKey(attribute)
             if !seen.contains(key) {
                 seen.insert(key)
                 result.append(attribute)
@@ -221,6 +229,39 @@ private func mergeAttributes(_ lists: [[StarGift.UniqueGift.Attribute]]) -> [Sta
         }
     }
     return result
+}
+
+/// every model, backdrop and symbol the server lists for a gift: its resale filters, then its upgrade samples
+private func fetchGiftAttributes(context: AccountContext, giftId: Int64) -> Signal<[StarGift.UniqueGift.Attribute], NoError> {
+    return Signal { subscriber in
+        let resaleContext = ResaleGiftsContext(account: context.account, giftId: giftId, forCrafting: false)
+        let resale = resaleContext.state
+        |> filter { state in
+            return !state.attributes.isEmpty || state.dataState != .loading
+        }
+        |> take(1)
+        |> map { state -> [StarGift.UniqueGift.Attribute] in
+            return state.attributes
+        }
+        |> timeout(8.0, queue: .mainQueue(), alternate: .single([]))
+        let preview = context.engine.payments.starGiftUpgradePreview(giftId: giftId)
+        |> map { preview -> [StarGift.UniqueGift.Attribute] in
+            return preview?.attributes ?? []
+        }
+        let disposable = (combineLatest(resale, preview)
+        |> map { resale, preview -> [StarGift.UniqueGift.Attribute] in
+            return mergeAttributes([resale, preview])
+        }).start(next: { attributes in
+            subscriber.putNext(attributes)
+        }, completed: {
+            subscriber.putCompletion()
+        })
+        return ActionDisposable {
+            // * the context lives until the request is done with
+            let _ = resaleContext
+            disposable.dispose()
+        }
+    }
 }
 
 private func firstAttribute(_ attributes: [StarGift.UniqueGift.Attribute], _ kind: StarGift.UniqueGift.Attribute.AttributeType) -> StarGift.UniqueGift.Attribute? {
@@ -251,6 +292,14 @@ private func vanityGiftBuilderEntries(state: VanityGiftBuilderState, accountPeer
         entries.append(.model(attributeName(state.model)))
         entries.append(.backdrop(attributeName(state.backdrop)))
         entries.append(.symbol(attributeName(state.symbol)))
+        let pool = VanityMod.shared.attributePool.attributes
+        let backdrops = pool.filter { $0.attributeType == .backdrop }.count
+        let symbols = pool.filter { $0.attributeType == .pattern }.count
+        var poolText = "Фоны и символы со всех подарков подходят к любому: сейчас \(backdrops) фонов и \(symbols) символов."
+        if state.poolTotal > 0 && state.poolDone < state.poolTotal {
+            poolText += " Собираю: \(state.poolDone) из \(state.poolTotal) подарков…"
+        }
+        entries.append(.poolInfo(poolText))
         entries.append(.numberHeader)
         entries.append(.number(state.number))
         entries.append(.total(state.total))
@@ -299,24 +348,9 @@ func vanityGiftBuilderController(context: AccountContext) -> ViewController {
                 state.total = "\(total)"
             }
         }
-        let resaleContext = ResaleGiftsContext(account: context.account, giftId: gift.id, forCrafting: false)
-        let resaleAttributes = resaleContext.state
-        |> filter { state in
-            return !state.attributes.isEmpty || state.dataState != .loading
-        }
-        |> take(1)
-        |> map { state -> [StarGift.UniqueGift.Attribute] in
-            return state.attributes
-        }
-        |> timeout(10.0, queue: .mainQueue(), alternate: .single([]))
-        let previewAttributes = context.engine.payments.starGiftUpgradePreview(giftId: gift.id)
-        |> map { preview -> [StarGift.UniqueGift.Attribute] in
-            return preview?.attributes ?? []
-        }
-        attributesDisposable.set((combineLatest(resaleAttributes, previewAttributes)
-        |> deliverOnMainQueue).start(next: { resale, preview in
-            let _ = resaleContext
-            let attributes = mergeAttributes([resale, preview])
+        attributesDisposable.set((fetchGiftAttributes(context: context, giftId: gift.id)
+        |> deliverOnMainQueue).start(next: { attributes in
+            VanityMod.shared.addToPool(giftId: gift.id, attributes: attributes)
             updateState { state in
                 state.isLoading = false
                 state.attributes = attributes
@@ -384,8 +418,10 @@ func vanityGiftBuilderController(context: AccountContext) -> ViewController {
         default:
             focused = nil
         }
-        // * Telegram's own variants screen: every option drawn, the gift at the top as picked
-        let variants = GiftUpgradeVariantsScreen(context: context, gift: base, attributes: state.attributes, selectedAttributes: state.selected, focusedAttribute: focused, selectionUpdated: { selected in
+        // * Telegram's own variants screen: every option drawn, the gift at the top as picked;
+        // * this gift's models, and the backdrops and symbols of every gift in the pool
+        let attributes = mergeAttributes([state.attributes, VanityMod.shared.attributePool.attributes])
+        let variants = GiftUpgradeVariantsScreen(context: context, gift: base, attributes: attributes, selectedAttributes: state.selected, focusedAttribute: focused, selectionUpdated: { selected in
             updateState { state in
                 for attribute in selected {
                     switch attribute.attributeType {
@@ -417,6 +453,51 @@ func vanityGiftBuilderController(context: AccountContext) -> ViewController {
         }
     })
 
+    // * the pool of backdrops and symbols: each gift not yet in it is asked once, one after another,
+    // * gently enough not to hit flood limits; what is collected stays on the device
+    let crawlCancelled = Atomic<Bool>(value: false)
+    let crawlDisposable = MetaDisposable()
+    actionsDisposable.add(crawlDisposable)
+    var crawlGiftIds: [Int64] = []
+    var crawlStep: ((Int) -> Void)?
+    crawlStep = { index in
+        if crawlCancelled.with({ $0 }) {
+            crawlStep = nil
+            return
+        }
+        guard index < crawlGiftIds.count else {
+            updateState { $0.poolDone = $0.poolTotal }
+            crawlStep = nil
+            return
+        }
+        let giftId = crawlGiftIds[index]
+        crawlDisposable.set((fetchGiftAttributes(context: context, giftId: giftId)
+        |> deliverOnMainQueue).start(next: { attributes in
+            VanityMod.shared.addToPool(giftId: giftId, attributes: attributes)
+            updateState { $0.poolDone += 1 }
+            Queue.mainQueue().after(0.4, {
+                crawlStep?(index + 1)
+            })
+        }))
+    }
+    actionsDisposable.add((context.engine.payments.cachedStarGifts()
+    |> take(1)
+    |> deliverOnMainQueue).start(next: { gifts in
+        var ids: [Int64] = []
+        for gift in gifts ?? [] {
+            if case let .generic(generic) = gift, generic.availability != nil, !ids.contains(generic.id) {
+                ids.append(generic.id)
+            }
+        }
+        let known = Set(VanityMod.shared.attributePool.giftIds)
+        crawlGiftIds = ids.filter { !known.contains($0) }
+        updateState { state in
+            state.poolTotal = ids.count
+            state.poolDone = ids.count - crawlGiftIds.count
+        }
+        crawlStep?(0)
+    }))
+
     let signal = combineLatest(context.sharedContext.presentationData, statePromise.get())
     |> deliverOnMainQueue
     |> map { presentationData, state -> (ItemListControllerState, (ItemListNodeState, Any)) in
@@ -425,6 +506,7 @@ func vanityGiftBuilderController(context: AccountContext) -> ViewController {
         return (controllerState, (listState, arguments))
     }
     |> afterDisposed {
+        let _ = crawlCancelled.swap(true)
         actionsDisposable.dispose()
     }
 
